@@ -25,13 +25,21 @@ function spawn(command, args, options) {
 }
 
 async function fileHash(path) {
-  const f = await fs.open(path);
-  const hash = crypto.createHash("sha1");
-  hash.setEncoding("hex");
+  try {
+    const f = await fs.open(path);
+    const hash = crypto.createHash("sha1");
+    hash.setEncoding("hex");
 
-  await pipeline(f.createReadStream(), hash);
+    await pipeline(f.createReadStream(), hash);
 
-  return hash.read();
+    return hash.read();
+  } catch (e) {
+    if (e.code === "ENOENT") {
+      return null;
+    }
+
+    throw e;
+  }
 }
 const srcsRegexp = /(?<=src *= *")(?<src>.*?)(?=")/g;
 
@@ -40,10 +48,11 @@ async function hashAssets(page) {
 
   const versionedSrcs = Object.fromEntries(
     await Promise.all(
-      srcs.map(async (src) => [
-        src,
-        `${src}?v=${await fileHash(`${builddir}/${src}`)}`,
-      ])
+      srcs.map(async (src) => {
+        const hash = await fileHash(`${builddir}/${src}`);
+
+        return [src, hash == null ? src : `${src}?v=${hash}`];
+      })
     )
   );
 
